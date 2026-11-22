@@ -3,59 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#6558e8">
-  <title>Chatter — Messages</title>
+  <meta name="theme-color" content="#6658e8">
+  <title>Chatter</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <main class="app-shell">
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="brand-mark">c</div>
+      <div class="brand-name">chatter</div>
+      <p class="auth-intro">A little closer, wherever you are.</p>
+      <div class="auth-tabs"><button class="auth-tab active" id="login-tab">Log in</button><button class="auth-tab" id="signup-tab">Create account</button></div>
+      <form id="auth-form">
+        <label id="username-label" hidden>Username<input id="auth-username" autocomplete="username" placeholder="Choose a username"></label>
+        <label>Email<input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+        <label>Password<input id="auth-password" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters"></label>
+        <button class="primary-btn auth-submit" id="auth-submit" type="submit">Log in</button>
+      </form>
+      <p class="auth-message" id="auth-message" role="status"></p>
+      <p class="auth-footnote">Use an email address you can access. Never share your password.</p>
+    </div>
+  </div>
+
+  <main class="app-shell" id="app-shell" hidden>
     <aside class="sidebar">
-      <div class="brand-row">
-        <div class="brand-mark">c</div>
-        <span class="brand-name">chatter</span>
-        <button class="icon-button mobile-new" aria-label="New chat">＋</button>
-      </div>
+      <div class="brand-row"><div class="brand-mark">c</div><span class="brand-name">chatter</span><button class="icon-button mobile-new" id="new-chat-mobile" aria-label="New chat">＋</button></div>
       <div class="profile-strip">
-        <div class="avatar you">W</div>
-        <div class="profile-copy"><strong>Your profile</strong><span>Set up your account soon</span></div>
-        <button class="dots" aria-label="Profile options">•••</button>
+        <img id="my-avatar" class="avatar you" alt="Your profile picture" hidden>
+        <div id="my-avatar-fallback" class="avatar you">?</div>
+        <div class="profile-copy"><strong id="my-name">Your profile</strong><span id="my-email">Signed in</span></div>
+        <button class="dots" id="sign-out" title="Sign out">↪</button>
       </div>
       <div class="search-wrap"><span>⌕</span><input id="search" type="search" placeholder="Search chats"></div>
       <div class="section-heading"><span>MESSAGES</span><button id="new-chat" class="small-plus" aria-label="New conversation">＋</button></div>
       <nav id="chat-list" class="chat-list" aria-label="Conversations"></nav>
-      <div class="sidebar-footer"><span class="status-dot"></span> Chatter preview <span class="version">v1.0</span></div>
+      <div class="sidebar-footer"><span class="status-dot"></span> Chatter <span class="version">LIVE</span></div>
     </aside>
-
     <section class="chat-panel">
       <header class="chat-header">
         <button class="back-button" id="back-button" aria-label="Back to chats">‹</button>
-        <div class="avatar header-avatar" id="header-avatar">L</div>
-        <div class="header-copy"><strong id="chat-title">Lorelei</strong><span id="chat-status">Usually replies quickly</span></div>
-        <div class="header-actions"><button class="icon-button" aria-label="Voice call">♧</button><button class="icon-button" aria-label="More options">•••</button></div>
+        <img id="header-avatar-img" class="avatar header-avatar" alt="" hidden>
+        <div class="avatar header-avatar" id="header-avatar">C</div>
+        <div class="header-copy"><strong id="chat-title">Choose a conversation</strong><span id="chat-status">Your messages will appear here</span></div>
+        <div class="header-actions"><button class="icon-button" id="chat-info" title="Conversation info">ⓘ</button></div>
       </header>
-      <div class="demo-notice"><span>✦</span> This is a preview. Messages are currently stored only in this browser.</div>
-      <div id="messages" class="messages">
-        <div class="day-divider"><span>TODAY</span></div>
-      </div>
-      <div class="typing" id="typing" hidden><span></span><span></span><span></span> <small>Someone is typing</small></div>
+      <div class="messages" id="messages"><div class="empty-state"><div class="empty-illustration">✉</div><h2>Your conversations, together.</h2><p>Choose a chat or start a new one.</p></div></div>
+      <div class="typing-line" id="typing-line" hidden></div>
       <form id="composer" class="composer">
-        <button class="attach-button" type="button" aria-label="Attach a file">＋</button>
-        <input id="message-input" autocomplete="off" placeholder="Write a message..." aria-label="Write a message">
-        <button class="voice-button" type="button" id="voice-button" aria-label="Voice message">🎙</button>
-        <button class="send-button" type="submit" aria-label="Send message">➤</button>
+        <button class="attach-button" type="button" id="voice-button" title="Record a voice message">🎙</button>
+        <input id="message-input" autocomplete="off" placeholder="Write a message..." aria-label="Write a message" disabled>
+        <button class="send-button" type="submit" disabled aria-label="Send message">➤</button>
       </form>
-      <div class="composer-hint">Press Enter to send</div>
+      <div class="composer-hint" id="composer-hint">Choose a conversation to start messaging</div>
     </section>
-    <aside class="details-panel">
-      <div class="details-top"><span>CHAT DETAILS</span><button class="dots" aria-label="More">•••</button></div>
-      <div class="details-person"><div class="avatar details-avatar" id="details-avatar">L</div><h2 id="details-name">Lorelei</h2><p id="details-subtitle">Chatter friend</p><span class="online-label"><i></i> Active recently</span></div>
-      <div class="details-divider"></div>
-      <div class="detail-option"><span class="option-icon">♧</span><span><strong>Group members</strong><small>Coming soon</small></span><span class="chevron">›</span></div>
-      <div class="detail-option"><span class="option-icon">▧</span><span><strong>Shared media</strong><small>Photos and files</small></span><span class="chevron">›</span></div>
-      <div class="detail-option"><span class="option-icon">⌕</span><span><strong>Search in chat</strong><small>Find a message</small></span><span class="chevron">›</span></div>
-      <div class="privacy-note"><span>🔒</span><p>Your conversations will be private to you and the people you choose once accounts and database security are connected.</p></div>
-    </aside>
   </main>
+
+  <dialog id="new-chat-dialog" class="modal">
+    <form method="dialog" class="modal-close-row"><button class="dots" aria-label="Close">✕</button></form>
+    <h2>Start a conversation</h2>
+    <p>Find someone by their exact username, or create a group.</p>
+    <div class="modal-tabs"><button class="modal-tab active" id="direct-tab">Direct chat</button><button class="modal-tab" id="group-tab">Group chat</button></div>
+    <form id="new-chat-form">
+      <label id="person-label">Username<input id="person-username" placeholder="e.g. alex" autocomplete="off"></label>
+      <label id="group-title-label" hidden>Group name<input id="group-title" placeholder="e.g. Weekend plans"></label>
+      <label id="group-members-label" hidden>Member usernames<input id="group-members" placeholder="alex, sam, jordan"></label>
+      <button class="primary-btn" type="submit" id="create-chat-submit">Continue</button>
+    </form>
+    <p class="auth-message" id="new-chat-message"></p>
+  </dialog>
+  <dialog id="profile-dialog" class="modal">
+    <form method="dialog" class="modal-close-row"><button class="dots" aria-label="Close">✕</button></form>
+    <h2>Conversation details</h2>
+    <p id="profile-dialog-copy">Conversation information</p>
+    <button class="secondary-btn" id="leave-chat">Leave group</button>
+  </dialog>
+  <div id="toast" class="toast" role="status"></div>
   <script src="app.js"></script>
 </body>
 </html>
