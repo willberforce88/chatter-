@@ -2,56 +2,104 @@
 // protect all data with Row Level Security. Never put a service_role/secret key here.
 const SUPABASE_URL = "https://apavasfglpszgvpqkpup.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_QTM5OpUOfh4UHVXnK7BwUA_-kPooH3-";
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
 
 const $ = id => document.getElementById(id);
 let currentUser = null, currentProfile = null, activeConversation = null;
 let conversations = [], channel = null, typingChannel = null, typingTimer = null;
-let authMode = "login", chatMode = "direct";
+let chatMode = "direct", authMode = "signup";
 const colors = ["linear-gradient(145deg,#9ac7fa,#6b83d8)","linear-gradient(145deg,#f3b58c,#d979a4)","linear-gradient(145deg,#82d6bd,#45a88e)","linear-gradient(145deg,#b8a0f5,#7865cf)"];
 
 function toast(message){const el=$("toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2800)}
 function initials(name){return (name||"?").trim().slice(0,1).toUpperCase()}
 function timeLabel(value){return new Date(value).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+
+function internalAuthEmail(username){
+  // Supabase Auth requires an email or phone identifier. This deterministic,
+  // non-deliverable address lets the UI use username + password without collecting email.
+  return username.toLowerCase()+"@chatter.invalid";
+}
 function setAuthMode(mode){
-  authMode=mode; $("login-tab").classList.toggle("active",mode==="login"); $("signup-tab").classList.toggle("active",mode==="signup");
-  $("username-label").hidden=mode!=="signup"; $("auth-submit").textContent=mode==="login"?"Log in":"Create account";
-  $("auth-username").required=mode==="signup";
+  authMode=mode;
+  $("signup-tab").classList.toggle("active",mode==="signup");
+  $("login-tab").classList.toggle("active",mode==="login");
+  $("first-name-label").hidden=mode!=="signup";
+  $("last-name-label").hidden=mode!=="signup";
+  $("username-hint").hidden=mode!=="signup";
+  $("auth-password").autocomplete=mode==="signup"?"new-password":"current-password";
+  $("auth-password").placeholder=mode==="signup"?"At least 8 characters":"Your password";
+  $("auth-submit").textContent=mode==="signup"?"Create my account":"Log in";
+  $("auth-message").textContent="";
 }
-$("login-tab").onclick=()=>setAuthMode("login"); $("signup-tab").onclick=()=>setAuthMode("signup");
+$("signup-tab").onclick=()=>setAuthMode("signup");
+$("login-tab").onclick=()=>setAuthMode("login");
+
 $("auth-form").addEventListener("submit",async e=>{
-  e.preventDefault(); const email=$("auth-email").value.trim(),password=$("auth-password").value;
-  $("auth-submit").disabled=true; $("auth-message").textContent="Please wait…";
-  let result;
-  if(authMode==="signup"){
-    const username=$("auth-username").value.trim().replace(/^@/,"").toLowerCase();
-    if(!/^[a-z0-9_]{3,20}$/.test(username)){ $("auth-message").textContent="Username must be 3–20 characters (letters, numbers or _)."; $("auth-submit").disabled=false; return; }
-    result=await db.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin+window.location.pathname,data:{username}}});
-    if(!result.error && result.data.user && result.data.session){
-      const {error}=await db.from("profiles").upsert({id:result.data.user.id,username},{onConflict:"id"});
-      if(error) $("auth-message").textContent="Account created, but profile setup needs attention: "+error.message;
-      else $("auth-message").textContent="Account created! Signing you in…";
-    } else if(!result.error) $("auth-message").textContent="Check your email to confirm your account, then log in.";
-  } else result=await db.auth.signInWithPassword({email,password});
-  if(result?.error) $("auth-message").textContent=result.error.message;
-  $("auth-submit").disabled=false;
+  e.preventDefault();
+  const username=$("auth-username").value.trim().replace(/^@/,"").toLowerCase();
+  const password=$("auth-password").value;
+  const message=$("auth-message"),submit=$("auth-submit");
+  if(!/^[a-z0-9_]{3,20}$/.test(username)){
+    message.textContent="Username must be 3–20 characters using letters, numbers or underscores.";return;
+  }
+  if(password.length<8){message.textContent="Your password must be at least 8 characters.";return}
+  submit.disabled=true;message.textContent="Please wait…";
+  try{
+    if(authMode==="signup"){
+      const first_name=$("auth-first-name").value.trim();
+      const last_name=$("auth-last-name").value.trim();
+      if(!first_name||!last_name)throw new Error("Please enter your first and last name.");
+      const {data:available,error:availabilityError}=await db.rpc("is_username_available",{p_username:username});
+      if(availabilityError)throw new Error("Username check isn't set up yet. Run the Chatter SQL setup in Supabase first. ("+availabilityError.message+")");
+      if(!available)throw new Error("That username is already taken. Please choose another.");
+      const {data:authData,error:authError}=await db.auth.signUp({
+        email:internalAuthEmail(username),
+        password,
+        options:{data:{first_name,last_name,username}}
+      });
+      if(authError)throw authError;
+      if(!authData.session){
+        throw new Error("Supabase is still requiring email confirmation. In Supabase, turn OFF Authentication → Providers → Email → Confirm email, then try again.");
+      }
+      const {data:profile,error:profileError}=await db.from("profiles").insert({
+        id:authData.user.id,first_name,last_name,username
+      }).select().single();
+      if(profileError){
+        await db.auth.signOut();
+        if(profileError.code==="23505")throw new Error("That username has just been claimed. Choose another one.");
+        throw new Error("Account created but profile setup failed: "+profileError.message);
+      }
+      currentUser=authData.user;currentProfile=profile;
+      await enterApp(authData.user,profile);
+    }else{
+      const {data,error}=await db.auth.signInWithPassword({
+        email:internalAuthEmail(username),password
+      });
+      if(error)throw new Error("Username or password is incorrect.");
+      await enterApp(data.user);
+    }
+  }catch(err){message.textContent=err.message||"Something went wrong."}
+  finally{submit.disabled=false}
 });
-async function ensureProfile(){
-  const {data,error}=await db.from("profiles").select("*").eq("id",currentUser.id).maybeSingle();
-  if(error){toast("Profile lookup: "+error.message);return null}
-  if(data)return data;
-  const suggested=(currentUser.user_metadata?.username||currentUser.email.split("@")[0]).toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20)||"chatteruser";
-  const {data:created,error:insertError}=await db.from("profiles").insert({id:currentUser.id,username:suggested}).select().single();
-  if(insertError){toast("Choose a username in account setup: "+insertError.message);return null}
-  return created;
-}
-async function enterApp(user){
+
+async function enterApp(user, knownProfile=null){
   currentUser=user;
   $("auth-screen").hidden=true; $("app-shell").hidden=false;
-  currentProfile=await ensureProfile();
-  $("my-name").textContent=currentProfile?.username||"Your profile";
-  $("my-email").textContent=user.email||"Signed in";
-  $("my-avatar-fallback").textContent=initials(currentProfile?.username);
+  if(knownProfile) currentProfile=knownProfile;
+  else {
+    const {data,error}=await db.from("profiles").select("*").eq("id",user.id).maybeSingle();
+    if(error){toast("Couldn't load your profile: "+error.message);return}
+    currentProfile=data;
+  }
+  if(!currentProfile){
+    await db.auth.signOut();
+    $("app-shell").hidden=true;$("auth-screen").hidden=false;
+    $("auth-message").textContent="We couldn't find your Chatter profile. Please create your account again.";
+    return;
+  }
+  $("my-name").textContent=[currentProfile.first_name,currentProfile.last_name].filter(Boolean).join(" ")||currentProfile.username;
+  $("my-email").textContent="@"+currentProfile.username;
+  $("my-avatar-fallback").textContent=initials(currentProfile.first_name||currentProfile.username);
   await loadConversations();
 }
 async function loadConversations(){
@@ -197,14 +245,8 @@ $("new-chat-form").addEventListener("submit",async e=>{
 $("voice-button").onclick=()=>toast("Voice recording and photo uploads are next — we'll configure secure Storage first.");
 
 async function boot(){
-  const {data:{session},error}=await db.auth.getSession();
-  if(error){$("auth-message").textContent="Couldn't check your session: "+error.message;return}
-  if(session?.user) await enterApp(session.user);
-  db.auth.onAuthStateChange((event,session)=>{
-    if(event==="SIGNED_IN"&&session?.user&&$("app-shell").hidden){
-      // Defer work until after Supabase finishes its auth callback.
-      setTimeout(()=>enterApp(session.user),0);
-    }
-  });
+  const {data:{session}}=await db.auth.getSession();
+  if(session?.user)await enterApp(session.user);
+  db.auth.onAuthStateChange(async(event,session)=>{if(event==="SIGNED_IN"&&session?.user&&$("app-shell").hidden)await enterApp(session.user)});
 }
 boot();
