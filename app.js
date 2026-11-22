@@ -61,9 +61,11 @@ $("auth-form").addEventListener("submit",async e=>{
       if(!authData.session){
         throw new Error("Supabase is still requiring email confirmation. In Supabase, turn OFF Authentication → Providers → Email → Confirm email, then try again.");
       }
-      const {data:profile,error:profileError}=await db.from("profiles").insert({
-        id:authData.user.id,first_name,last_name,username
-      }).select().single();
+      const {data:profile,error:profileError}=await db.rpc("create_chatter_profile",{
+        p_first_name:first_name,
+        p_last_name:last_name,
+        p_username:username
+      });
       if(profileError){
         await db.auth.signOut();
         if(profileError.code==="23505")throw new Error("That username has just been claimed. Choose another one.");
