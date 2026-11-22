@@ -26,7 +26,7 @@ $("auth-form").addEventListener("submit",async e=>{
   if(authMode==="signup"){
     const username=$("auth-username").value.trim().replace(/^@/,"").toLowerCase();
     if(!/^[a-z0-9_]{3,20}$/.test(username)){ $("auth-message").textContent="Username must be 3–20 characters (letters, numbers or _)."; $("auth-submit").disabled=false; return; }
-    result=await db.auth.signUp({email,password,options:{data:{username}}});
+    result=await db.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin+window.location.pathname,data:{username}}});
     if(!result.error && result.data.user && result.data.session){
       const {error}=await db.from("profiles").upsert({id:result.data.user.id,username},{onConflict:"id"});
       if(error) $("auth-message").textContent="Account created, but profile setup needs attention: "+error.message;
@@ -197,8 +197,14 @@ $("new-chat-form").addEventListener("submit",async e=>{
 $("voice-button").onclick=()=>toast("Voice recording and photo uploads are next — we'll configure secure Storage first.");
 
 async function boot(){
-  const {data:{session}}=await db.auth.getSession();
-  if(session?.user)await enterApp(session.user);
-  db.auth.onAuthStateChange(async(event,session)=>{if(event==="SIGNED_IN"&&session?.user&&$("app-shell").hidden)await enterApp(session.user)});
+  const {data:{session},error}=await db.auth.getSession();
+  if(error){$("auth-message").textContent="Couldn't check your session: "+error.message;return}
+  if(session?.user) await enterApp(session.user);
+  db.auth.onAuthStateChange((event,session)=>{
+    if(event==="SIGNED_IN"&&session?.user&&$("app-shell").hidden){
+      // Defer work until after Supabase finishes its auth callback.
+      setTimeout(()=>enterApp(session.user),0);
+    }
+  });
 }
 boot();
